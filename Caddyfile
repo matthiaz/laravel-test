@@ -1,0 +1,28 @@
+{
+    auto_https off
+    admin off
+}
+
+:80 {
+    root * /app/public
+    encode gzip
+    php_server {
+        env APP_KEY {env.APP_KEY}
+        env APP_URL {env.APP_URL}
+        env APP_ENV {env.APP_ENV}
+        env APP_DEBUG {env.APP_DEBUG}
+        env DB_CONNECTION {env.DB_CONNECTION}
+        env DB_HOST {env.DB_HOST}
+        env DB_PORT {env.DB_PORT}
+        env DB_DATABASE {env.DB_DATABASE}
+        env DB_USERNAME {env.DB_USERNAME}
+        env DB_PASSWORD {env.DB_PASSWORD}
+        env CACHE_DRIVER {env.CACHE_DRIVER}
+        env SESSION_DRIVER {env.SESSION_DRIVER}
+        env QUEUE_CONNECTION {env.QUEUE_CONNECTION}
+        env REDIS_HOST {env.REDIS_HOST}
+        env REDIS_PORT {env.REDIS_PORT}
+    }
+
+    file_server
+}

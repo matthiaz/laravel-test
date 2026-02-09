@@ -1,60 +1,67 @@
-# ---- Base PHP image ----
-FROM php:8.4-fpm-alpine AS base
+# ---- Base FrankenPHP image ----
+FROM dunglas/frankenphp:1-php8.4-alpine AS base
 
-# System dependencies
-RUN apk add --no-cache \
-    bash \
-    git \
-    unzip \
-    icu-dev \
-    libzip-dev \
-    oniguruma-dev \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev
+# Install PHP extensions Laravel needs
+RUN install-php-extensions \
+    pdo_mysql \
+    zip \
+    intl \
+    mbstring \
+    gd \
+    opcache \
+    redis \
+    pcntl \
+    bcmath \
+    bash
 
-# PHP extensions required by Laravel
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install \
-        intl \
-        pdo \
-        pdo_mysql \
-        zip \
-        mbstring \
-        gd \
-        opcache
+WORKDIR /app
 
-# PHP production settings
-COPY ./php.ini /usr/local/etc/php/conf.d/php.ini
+# Copy FrankenPHP Caddyfile for proper routing
+COPY Caddyfile /etc/caddy/Caddyfile
 
-WORKDIR /var/www/html
+# Copy php.ini if needed
+COPY php.ini /usr/local/etc/php/conf.d/php.ini
 
-# ---- Composer dependencies ----
+# ---- Composer stage for caching ----
 FROM composer:2 AS vendor
 
 WORKDIR /app
-COPY composer.json composer.lock ./
-RUN composer install \
-    --no-dev \
-    --no-interaction \
-    --prefer-dist \
-    --optimize-autoloader
 
-# ---- Application image ----
+# Copy composer files first for caching
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --no-scripts --prefer-dist
+
+# ---- Final application image ----
 FROM base
 
-# Copy vendor deps
-COPY --from=vendor /app/vendor ./vendor
+WORKDIR /app
 
 # Copy application source
-COPY . .
+COPY --chown=www-data:www-data . .
 
-# Laravel permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage bootstrap/cache
+# Copy vendor from composer stage
+COPY --from=vendor --chown=www-data:www-data /app/vendor ./vendor
 
-USER www-data
+# Set Laravel permissions
+RUN mkdir -p storage/framework/{cache,sessions,views} \
+    && mkdir -p storage/logs \
+    && mkdir -p bootstrap/cache \
+    && chown -R www-data:www-data /app/storage /app/bootstrap/cache \
+    && chmod -R 775 /app/storage /app/bootstrap/cache
 
-EXPOSE 9000
+# Run Laravel optimizations
+# RUN php artisan config:cache \
+#    && php artisan route:cache \
+#    && php artisan view:cache
 
-CMD ["php-fpm"]
+# Expose HTTP port
+EXPOSE 80
+
+
+# Create an entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# FrankenPHP starts via our custom entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
